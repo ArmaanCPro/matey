@@ -1,6 +1,6 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.7)
 
-project (m6502)
+project (m6502Lib)
 
 if (MSVC)
     add_compile_options(/MP)                # multiprocessor compile
@@ -11,11 +11,14 @@ else()
 endif()
 
 set( m6502_SOURCES
-        src/main.cpp
+        "src/6502.h"
+        "src/6502.cpp"
 )
 
-# Create the executable.
-add_executable(m6502 ${m6502_SOURCES})
+source_group("src" FILES ${M6502_SOURCES})
+
+# Create the library.
+add_library(m6502Lib ${m6502_SOURCES})
 
 # Include the 'src' directory.
-target_include_directories(m6502 PUBLIC "${CMAKE_SOURCE_DIR}/src")
+target_include_directories(m6502Lib PUBLIC "${PROJECT_SOURCE_DIR}/src")

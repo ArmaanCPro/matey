@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.7)
 
 project(matey)
 
@@ -9,4 +9,5 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 set(CMAKE_CXX_STANDARD 20)
 
-add_subdirectory(m6502)
+add_subdirectory(m6502Lib)
+add_subdirectory(m6502Test)
