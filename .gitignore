@@ -1,4 +1,6 @@
-﻿### VisualStudioCode template
+﻿build/
+
+### VisualStudioCode template
 .vscode/*
 !.vscode/settings.json
 !.vscode/tasks.json

@@ -67,7 +67,7 @@ SpacesInContainerLiterals: false
 SpacesInCStyleCastParentheses: false
 SpacesInLineCommentPrefix:
   Minimum: 0
-  Strict: false
+  #Strict: false
 SpacesInParentheses: false
 SpacesInSquareBrackets: false
 UseCRLF: false

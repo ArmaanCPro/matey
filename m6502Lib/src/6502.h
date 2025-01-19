@@ -16,21 +16,21 @@ struct Mem
 
     void initialize()
     {
-      mem.fill(0);
+        mem.fill(0);
     }
 
     // read one byte
     uint8_t operator[](size_t address) const
     {
-      // we should assert if the address is valid or use mem.at(address)
-      return mem[address];
+        // we should assert if the address is valid or use mem.at(address)
+        return mem[address];
     }
 
     // write 1 byte
     uint8_t& operator[](size_t address)
     {
-      // we should assert if the address is valid or use mem.at(address)
-      return mem[address];
+        // we should assert if the address is valid or use mem.at(address)
+        return mem[address];
     }
 
     // write 1 word to the stack. takes 2 cycles (1 for each byte)
@@ -62,7 +62,7 @@ struct CPU {
     uint8_t I : 1;
     uint8_t D : 1;
     uint8_t B : 1;
-    uint8_t O : 1;
+    uint8_t V : 1;
     uint8_t N : 1;
 
     void reset(Mem& mem)
@@ -74,7 +74,7 @@ struct CPU {
         // reset the registers
         A = X = Y = 0;
         // reset the flags
-        C = Z = I = D = B = O = N = 0;
+        C = Z = I = D = B = V = N = 0;
         // initialize the memory. note that the CPU doesn't do anything else with it
         mem.initialize();
     }
@@ -108,13 +108,13 @@ struct CPU {
     }
 
 
-  // opcodes
-  static constexpr uint8_t
-    INS_LDA_IM      = 0x00A9,   // LDA immediate
-    INS_LDA_ZP      = 0x00A5,   // LDA Zero Page
-    INS_LDA_ZPX     = 0x00B5,   // LDA Zero Page, X
-    INS_JSR         = 0x0020    // JSR Absolute
-    ;
+    // opcodes
+    static constexpr uint8_t
+        INS_LDA_IM      = 0x00A9,   // LDA immediate
+        INS_LDA_ZP      = 0x00A5,   // LDA Zero Page
+        INS_LDA_ZPX     = 0x00B5,   // LDA Zero Page, X
+        INS_JSR         = 0x0020    // JSR Absolute
+        ;
 
     void LDASetStatus()
     {
@@ -122,49 +122,53 @@ struct CPU {
         N = (A & 0x80) != 0; // checks if the most significant digit of A is 1, for the 6502 it is checking for the 7th bit
     }
 
-  void execute(uint32_t cycles, Mem& memory)
-  {
-    while (cycles > 0)
-      {
-        uint8_t opCode = fetch_byte(cycles, memory); // read opcode
-        switch (opCode)
+    /** @return the number of cycles it took*/
+    int32_t execute(uint32_t cycles, Mem& memory)
+    {
+        const uint32_t cyclesRequested = cycles;
+        while (cycles > 0)
         {
-        case INS_LDA_IM:
-        {
-            A = fetch_byte(cycles, memory);
-            LDASetStatus();
-        } break;
-        case INS_LDA_ZP:
-        {
-            uint8_t ZeroPageAddress = fetch_byte(cycles, memory);
-            A = peek_byte(ZeroPageAddress, cycles, memory);
-            LDASetStatus();
-        } break;
-        case INS_LDA_ZPX:
-        {
-            uint8_t ZeroPageAddress = fetch_byte(cycles, memory);
-            ZeroPageAddress = (ZeroPageAddress + X) & 0xFF; // wraps around in the zero page
-            cycles--; // adding X to the ZeroPageAddress takes a cycle
-            A = peek_byte(ZeroPageAddress, cycles, memory);
-            LDASetStatus();
-        } break;
-        case INS_JSR:
-        {
-            uint16_t SubAddr = fetch_word(cycles, memory);
-            // push return point - 1 on to the stack
-            memory.write_word(PC - 1, SP, cycles); // push return address on to the stack
-            SP--;
-            cycles--;
-            PC = SubAddr;
-            cycles--;
-        } break;
+            uint8_t opCode = fetch_byte(cycles, memory); // read opcode
+            switch (opCode)
+            {
+            case INS_LDA_IM:
+            {
+                A = fetch_byte(cycles, memory);
+                LDASetStatus();
+            } break;
+            case INS_LDA_ZP:
+            {
+                uint8_t ZeroPageAddress = fetch_byte(cycles, memory);
+                A = peek_byte(ZeroPageAddress, cycles, memory);
+                LDASetStatus();
+            } break;
+            case INS_LDA_ZPX:
+            {
+                uint8_t ZeroPageAddress = fetch_byte(cycles, memory);
+                ZeroPageAddress = (ZeroPageAddress + X) & 0xFF; // wraps around in the zero page
+                cycles--; // adding X to the ZeroPageAddress takes a cycle
+                A = peek_byte(ZeroPageAddress, cycles, memory);
+                LDASetStatus();
+            } break;
+            case INS_JSR:
+            {
+                uint16_t SubAddr = fetch_word(cycles, memory);
+                // push return point - 1 on to the stack
+                memory.write_word(PC - 1, SP, cycles); // push return address on to the stack
+                SP--;
+                cycles--;
+                PC = SubAddr;
+                cycles--;
+            } break;
 
-        default:
-        {
-            std::cerr << "Unknown opcode: " << "0x" << std::hex << (int)opCode << std::endl;
-        } break;
+            default:
+            {
+                std::cerr << "Unknown opcode: " << "0x" << std::hex << (int)opCode << std::endl;
+            } break;
 
+            }
         }
-      }
-  }
+        
+        return (int32_t)cyclesRequested - (int32_t)cycles; // number of cycles used
+    }
 };
