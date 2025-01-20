@@ -18,18 +18,6 @@ namespace m6502
     //using InstructionHandler = void (CPU::*)(int32_t& cycles, Mem& mem);
     // Instruction Handler is a function pointer taking a ref to cycles and memory. 
     using InstructionHandler = std::function<void(int32_t& cycles, Mem& memory)>;
-    
-    enum class AddressingMode : uint8_t {
-        Immediate,
-        ZeroPage,
-        ZeroPageX,
-        ZeroPageY,
-        Absolute,
-        AbsoluteX,
-        AbsoluteY,
-        IndirectX,
-        IndirectY
-    };
 }
 
 // 64 KB of memory
@@ -146,11 +134,6 @@ private:
     InstructionHandler instructionTable[256];
 
     void initialize_instruction_table();
-
-    // these grouped handlers have a switch statement based on addressingMoed increasing runtime cost. be aware of it if exact nanosecond cycle emulation is desired
-    void handle_lda(int32_t& cycles, Mem& memory, AddressingMode addressingMode);
-    void handle_ldx(int32_t& cycles, Mem& memory, AddressingMode addressingMode);
-    void handle_ldy(int32_t& cycles, Mem& memory, AddressingMode addressingMode);
 
 protected:
     

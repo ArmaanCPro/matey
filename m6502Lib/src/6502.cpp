@@ -16,13 +16,13 @@ int32_t m6502::CPU::execute(int32_t cycles, Mem& memory)
 
 void m6502::CPU::initialize_instruction_table()
 {
-    /*for (auto& entry : instructionTable)
+    // No operation. NOP takes 2 cycles, one for getting the opcode and one for the instruction itself.
+    auto NOP_lambda = [](int32_t& cycles, Mem& memory) { cycles--; };
+
+    for (auto& entry : instructionTable)
     {
-        entry = [&](int32_t& cycles, Mem& memory)
-        {
-            //std::cerr << "[ERROR] Unknown opcode." << std::endl;
-        };
-    }*/
+        entry = NOP_lambda;
+    }
 
     // cycle accurate performance isn't a big concern of mine currently, hence I'm using shared handlers
     // these shared handlers have a switch statement, but the few nanosecond runtime cost is a fine tradeoff for code maintenance
@@ -31,28 +31,64 @@ void m6502::CPU::initialize_instruction_table()
     /** LDA family */
     // ----------------------
     instructionTable[INS_LDA_IM] = [&](int32_t& cycles, Mem& memory) {
-        handle_lda(cycles, memory, AddressingMode::Immediate);
+        A = fetch_byte(cycles, memory);
+        zn_set_status(A);
     };
     instructionTable[INS_LDA_ZP] = [&](int32_t& cycles, Mem& memory) {
-        handle_lda(cycles, memory, AddressingMode::ZeroPage);
+        uint8_t ZeroPageAddress = fetch_byte(cycles, memory);
+        A = peek_byte(ZeroPageAddress, cycles, memory);
+        zn_set_status(A);
     };
     instructionTable[INS_LDA_ZPX] = [&](int32_t& cycles, Mem& memory) {
-        handle_lda(cycles, memory, AddressingMode::ZeroPageX);
+        uint8_t ZeroPageAddress = fetch_byte(cycles, memory);
+        ZeroPageAddress = wrap_zero_page(ZeroPageAddress + X);
+        cycles--; // adding X to teh ZPA takes a cycle
+        A = peek_byte(ZeroPageAddress, cycles, memory);
+        zn_set_status(A);
     };
     instructionTable[INS_LDA_ABS] = [&](int32_t& cycles, Mem& memory) {
-        handle_lda(cycles, memory, AddressingMode::Absolute);
+        uint16_t addr = fetch_word(cycles, memory);
+        A = peek_byte(addr, cycles, memory);
+        zn_set_status(A);
     };
     instructionTable[INS_LDA_ABSX] = [&](int32_t& cycles, Mem& memory) {
-        handle_lda(cycles, memory, AddressingMode::AbsoluteX);
+        uint16_t baseAddr = fetch_word(cycles, memory);
+        uint16_t effectiveAddr = baseAddr + X;
+        if (crosses_page_boundary(effectiveAddr, baseAddr))
+        {
+            cycles--;
+        }
+        A = peek_byte(effectiveAddr, cycles, memory);
+        zn_set_status(A);
     };
     instructionTable[INS_LDA_ABSY] = [&](int32_t& cycles, Mem& memory) {
-        handle_lda(cycles, memory, AddressingMode::AbsoluteY);
+        uint16_t baseAddr = fetch_word(cycles, memory);
+        uint16_t effectiveAddr = baseAddr + Y;
+        if (crosses_page_boundary(effectiveAddr, baseAddr))
+        {
+            cycles--;
+        }
+        A = peek_byte(effectiveAddr, cycles, memory);
+        zn_set_status(A);
     };
     instructionTable[INS_LDA_INDX] = [&](int32_t& cycles, Mem& memory) {
-        handle_lda(cycles, memory, AddressingMode::IndirectX);
+        uint8_t zpAddr = fetch_byte(cycles, memory);
+        zpAddr = wrap_zero_page(zpAddr + X);
+        cycles--; // adding x to zpAddr takes a cycle
+        uint16_t effectiveAddr = peek_word(zpAddr, cycles, memory);
+        A = peek_byte(effectiveAddr, cycles, memory);
+        zn_set_status(A);
     };
     instructionTable[INS_LDA_INDY] = [&](int32_t& cycles, Mem& memory) {
-        handle_lda(cycles, memory, AddressingMode::IndirectY);
+        uint8_t zpAddr = fetch_byte(cycles, memory);
+        uint16_t baseAddr = peek_word(zpAddr, cycles, memory);
+        uint16_t effectiveAddr = baseAddr + Y;
+        if (crosses_page_boundary(effectiveAddr, baseAddr))
+        {
+            cycles--;
+        }
+        A = peek_byte(effectiveAddr, cycles, memory);
+        zn_set_status(A);
     };
     // ---------------------------------------------
 
@@ -60,7 +96,8 @@ void m6502::CPU::initialize_instruction_table()
     // ------------------
     instructionTable[INS_LDX_IM] = [&](int32_t& cycles, Mem& memory)
     {
-        handle_ldx(cycles, memory, AddressingMode::Immediate);
+        X = fetch_byte(cycles, memory);
+        zn_set_status(X);
     };
     // -------------------
 
@@ -68,7 +105,8 @@ void m6502::CPU::initialize_instruction_table()
     // ----------------------
     instructionTable[INS_LDY_IM] = [&](int32_t& cycles, Mem& memory)
     {
-        handle_ldy(cycles, memory, AddressingMode::Immediate);
+        Y = fetch_byte(cycles, memory);
+        zn_set_status(Y);
     };
     // ----------------------
     
@@ -84,92 +122,5 @@ void m6502::CPU::initialize_instruction_table()
     };
     
     // NOP opcode
-    instructionTable[0xEA] = [&](int32_t& cycles, Mem& memory) { cycles--; };
-}
-
-void m6502::CPU::handle_lda(int32_t& cycles, Mem& memory, AddressingMode mode)
-{
-    uint16_t address = 0;
-    switch (mode)
-    {
-    case AddressingMode::Immediate:
-        A = fetch_byte(cycles, memory);
-        zn_set_status(A);
-        return;
-
-    case AddressingMode::ZeroPage:
-        address = fetch_byte(cycles, memory);
-        break;
-
-    case AddressingMode::ZeroPageX:
-        address = wrap_zero_page(fetch_byte(cycles, memory) + X);
-        cycles--; // Extra cycle for indexed access
-        break;
-
-    case AddressingMode::Absolute:
-        address = fetch_word(cycles, memory);
-        break;
-
-    case AddressingMode::AbsoluteX:
-    {
-        uint16_t baseAddr = fetch_word(cycles, memory);
-        address = baseAddr + X;
-        if (crosses_page_boundary(address, baseAddr)) cycles--;
-        break;
-    }
-
-    case AddressingMode::AbsoluteY:
-    {
-        uint16_t baseAddr = fetch_word(cycles, memory);
-        address = baseAddr + Y;
-        if (crosses_page_boundary(address, baseAddr)) cycles--;
-        break;
-    }
-
-    case AddressingMode::IndirectX:
-    {
-        uint8_t zpAddr = wrap_zero_page(fetch_byte(cycles, memory) + X);
-        cycles--; // Extra cycle for zero-page indexing
-        address = peek_word(zpAddr, cycles, memory);
-        break;
-    }
-
-    case AddressingMode::IndirectY:
-    {
-        uint8_t zpAddr = fetch_byte(cycles, memory);
-        uint16_t baseAddr = peek_word(zpAddr, cycles, memory);
-        address = baseAddr + Y;
-        if (crosses_page_boundary(address, baseAddr)) cycles--;
-        break;
-    }
-    }
-    // Perform the LDA operation and update flags
-    A = peek_byte(address, cycles, memory);
-    zn_set_status(A);
-}
-
-void m6502::CPU::handle_ldx(int32_t& cycles, Mem& memory, AddressingMode addressingMode)
-{
-    uint16_t address = 0;
-    switch (addressingMode)
-    {
-    case AddressingMode::Immediate:
-    {
-        X = fetch_byte(cycles, memory);
-        zn_set_status(X);
-    } break;
-    }
-}
-
-void m6502::CPU::handle_ldy(int32_t& cycles, Mem& memory, AddressingMode addressingMode)
-{
-    uint16_t address = 0;
-    switch (addressingMode)
-    {
-    case AddressingMode::Immediate:
-    {
-        Y = fetch_byte(cycles, memory);
-        zn_set_status(Y);
-    } break;
-    }
+    instructionTable[0xEA] = NOP_lambda;
 }
