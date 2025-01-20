@@ -16,17 +16,51 @@ public:
     }
 };
 
+static void VerifyUnmodifiedFlagsFromLDA(const CPU& cpu, const CPU& CPUCopy)
+{
+    EXPECT_EQ(cpu.C, CPUCopy.C);
+    EXPECT_EQ(cpu.I, CPUCopy.I);
+    EXPECT_EQ(cpu.D, CPUCopy.D);
+    EXPECT_EQ(cpu.B, CPUCopy.B);
+    EXPECT_EQ(cpu.V, CPUCopy.V);
+}
+
 // using test fixtures
+TEST_F(m6502Test1, TheCPUDoesNothingWhenWeExecuteZeroCycles)
+{
+    // given:
+    constexpr int32_t NUM_CYCLES = 0;
+
+    // when:
+    const int32_t CyclesUsed = cpu.execute(NUM_CYCLES, mem);
+
+    // then:
+    EXPECT_EQ(CyclesUsed, 0);
+}
+
+TEST_F( m6502Test1, CPUCanExecuteMoreCyclesThanRequestedIfRequiredByTheInstruction)
+{
+    // given:
+    mem[0xFFFC] = CPU::INS_LDA_IM;
+    mem[0xFFFD] = 0x84;
+    CPU CPUCopy = cpu;
+    constexpr int32_t NUM_CYCLES = 1;
+
+    // when:
+    int32_t cyclesUsed = cpu.execute(NUM_CYCLES, mem);
+
+    // then:
+    EXPECT_EQ(cyclesUsed, 2);
+}
+
 TEST_F( m6502Test1, LDAImmediateCanLoadAValueIntoTheARegister)
 {
     // given:
-    // inlining a little program
     mem[0xFFFC] = CPU::INS_LDA_IM;
     mem[0xFFFD] = 0x84;
-    // -------------------------
+    CPU CPUCopy = cpu; 
 
     // when:
-    CPU CPUCopy = cpu; 
     int32_t cyclesUsed = cpu.execute(2, mem);
 
     // then:
@@ -34,24 +68,35 @@ TEST_F( m6502Test1, LDAImmediateCanLoadAValueIntoTheARegister)
     EXPECT_EQ(cyclesUsed, 2);
     EXPECT_FALSE(cpu.Z);
     EXPECT_TRUE(cpu.N); // 0x84 should be negative because bit 7 is true
-    EXPECT_EQ(cpu.C, CPUCopy.C);
-    EXPECT_EQ(cpu.I, CPUCopy.I);
-    EXPECT_EQ(cpu.D, CPUCopy.D);
-    EXPECT_EQ(cpu.B, CPUCopy.B);
-    EXPECT_EQ(cpu.V, CPUCopy.V);
+    VerifyUnmodifiedFlagsFromLDA(cpu, CPUCopy);
+}
+
+TEST_F( m6502Test1, LDAImmediateCanLoadTheZeroFlag)
+{
+    // given:
+    cpu.A = 0x69;
+    mem[0xFFFC] = CPU::INS_LDA_IM;
+    mem[0xFFFD] = 0x0;
+    CPU CPUCopy = cpu;
+
+    // when:
+    cpu.execute(2, mem);
+
+    // then:
+    EXPECT_TRUE(cpu.Z);     // loading 0 into our A register should make this flag true!
+    EXPECT_FALSE(cpu.N);
+    VerifyUnmodifiedFlagsFromLDA(cpu, CPUCopy);
 }
 
 TEST_F( m6502Test1, LDAZeroPageCanLoadAValueIntoTheARegister)
 {
     // given:
-    // inlining a little program
     mem[0xFFFC] = CPU::INS_LDA_ZP;
     mem[0xFFFD] = 0x42;
     mem[0x0042] = 0x37;
-    // -------------------------
+    CPU CPUCopy = cpu; 
 
     // when:
-    CPU CPUCopy = cpu; 
     int32_t cyclesUsed = cpu.execute(3, mem);
 
     // then:
@@ -59,25 +104,19 @@ TEST_F( m6502Test1, LDAZeroPageCanLoadAValueIntoTheARegister)
     EXPECT_EQ(cyclesUsed, 3);
     EXPECT_FALSE(cpu.Z);
     EXPECT_FALSE(cpu.N);
-    EXPECT_EQ(cpu.C, CPUCopy.C);
-    EXPECT_EQ(cpu.I, CPUCopy.I);
-    EXPECT_EQ(cpu.D, CPUCopy.D);
-    EXPECT_EQ(cpu.B, CPUCopy.B);
-    EXPECT_EQ(cpu.V, CPUCopy.V);
+    VerifyUnmodifiedFlagsFromLDA(cpu, CPUCopy);
 }
 
 TEST_F( m6502Test1, LDAZeroPageXCanLoadAValueIntoTheARegister)
 {
     // given:
     cpu.X = 5;
-    // inlining a little program
     mem[0xFFFC] = CPU::INS_LDA_ZPX;
     mem[0xFFFD] = 0x42;
     mem[0x0047] = 0x37; // we check 0x0047 because ZPX goes to the address 0x42 but adds 5 because the X register is 5
-    // -------------------------
+    CPU CPUCopy = cpu; 
 
     // when:
-    CPU CPUCopy = cpu; 
     int32_t cyclesUsed = cpu.execute(4, mem);
 
     // then:
@@ -85,25 +124,19 @@ TEST_F( m6502Test1, LDAZeroPageXCanLoadAValueIntoTheARegister)
     EXPECT_EQ(cyclesUsed, 4);
     EXPECT_FALSE(cpu.Z);
     EXPECT_FALSE(cpu.N);
-    EXPECT_EQ(cpu.C, CPUCopy.C);
-    EXPECT_EQ(cpu.I, CPUCopy.I);
-    EXPECT_EQ(cpu.D, CPUCopy.D);
-    EXPECT_EQ(cpu.B, CPUCopy.B);
-    EXPECT_EQ(cpu.V, CPUCopy.V);
+    VerifyUnmodifiedFlagsFromLDA(cpu, CPUCopy);
 }
 
 TEST_F( m6502Test1, LDAZeroPageXCanLoadAValueIntoTheARegisterWhenItWraps)
 {
     // given:
     cpu.X = 0xFF;
-    // inlining a little program
     mem[0xFFFC] = CPU::INS_LDA_ZPX;
     mem[0xFFFD] = 0x0080;
     mem[0x007F] = 0x37;
-    // -------------------------
+    CPU CPUCopy = cpu; 
 
     // when:
-    CPU CPUCopy = cpu; 
     int32_t cyclesUsed = cpu.execute(4, mem);
 
     // then:
@@ -111,9 +144,178 @@ TEST_F( m6502Test1, LDAZeroPageXCanLoadAValueIntoTheARegisterWhenItWraps)
     EXPECT_EQ(cyclesUsed, 4);
     EXPECT_FALSE(cpu.Z);
     EXPECT_FALSE(cpu.N);
-    EXPECT_EQ(cpu.C, CPUCopy.C);
-    EXPECT_EQ(cpu.I, CPUCopy.I);
-    EXPECT_EQ(cpu.D, CPUCopy.D);
-    EXPECT_EQ(cpu.B, CPUCopy.B);
-    EXPECT_EQ(cpu.V, CPUCopy.V);
+    VerifyUnmodifiedFlagsFromLDA(cpu, CPUCopy);
+}
+
+TEST_F( m6502Test1, LDAAbsoluteCanLoadAValueIntoTheARegister)
+{
+    // given:
+    mem[0xFFFC] = CPU::INS_LDA_ABS;
+    mem[0xFFFD] = 0x80;
+    mem[0xFFFE] = 0x44; // [ 0x4480
+    mem[0x4480] = 0x37;
+    CPU CPUCopy = cpu;
+
+    // when:
+    int32_t cyclesUsed = cpu.execute(4, mem);
+
+    // then:
+    EXPECT_EQ(cpu.A, 0x37);
+    EXPECT_EQ(cyclesUsed, 4);
+    EXPECT_FALSE(cpu.Z);
+    EXPECT_FALSE(cpu.N);
+    VerifyUnmodifiedFlagsFromLDA(cpu, CPUCopy);
+}
+
+TEST_F( m6502Test1, LDAAbsoluteXCanLoadAValueIntoTheARegister)
+{
+    // given:
+    cpu.X = 1;
+    mem[0xFFFC] = CPU::INS_LDA_ABSX;
+    mem[0xFFFD] = 0x80;
+    mem[0xFFFE] = 0x44; // [ 0x4480
+    mem[0x4481] = 0x37;
+    CPU CPUCopy = cpu;
+
+    // when:
+    int32_t cyclesUsed = cpu.execute(4, mem);
+
+    // then:
+    EXPECT_EQ(cpu.A, 0x37);
+    EXPECT_EQ(cyclesUsed, 4);
+    EXPECT_FALSE(cpu.Z);
+    EXPECT_FALSE(cpu.N);
+    VerifyUnmodifiedFlagsFromLDA(cpu, CPUCopy);
+}
+
+TEST_F( m6502Test1, LDAAbsoluteXCanLoadAValueIntoTheARegisterWhenItCrossesAPageBoundary)
+{
+    // given:
+    cpu.X = 0xFF;
+    mem[0xFFFC] = CPU::INS_LDA_ABSX;
+    mem[0xFFFD] = 0x02;
+    mem[0xFFFE] = 0x44; // [ 0x4402
+    mem[0x4501] = 0x37; // 0x4402 + 0xFF crosses page boundary
+    CPU CPUCopy = cpu;
+
+    // when:
+    int32_t cyclesUsed = cpu.execute(4, mem);
+
+    // then:
+    EXPECT_EQ(cpu.A, 0x37);
+    EXPECT_EQ(cyclesUsed, 5);
+    EXPECT_FALSE(cpu.Z);
+    EXPECT_FALSE(cpu.N);
+    VerifyUnmodifiedFlagsFromLDA(cpu, CPUCopy);
+}
+
+TEST_F( m6502Test1, LDAAbsoluteYCanLoadAValueIntoTheARegister)
+{
+    // given:
+    cpu.Y = 1;
+    mem[0xFFFC] = CPU::INS_LDA_ABSY;
+    mem[0xFFFD] = 0x80;
+    mem[0xFFFE] = 0x44; // [ 0x4480
+    mem[0x4481] = 0x37;
+    CPU CPUCopy = cpu;
+
+    // when:
+    int32_t cyclesUsed = cpu.execute(4, mem);
+
+    // then:
+    EXPECT_EQ(cpu.A, 0x37);
+    EXPECT_EQ(cyclesUsed, 4);
+    EXPECT_FALSE(cpu.Z);
+    EXPECT_FALSE(cpu.N);
+    VerifyUnmodifiedFlagsFromLDA(cpu, CPUCopy);
+}
+
+TEST_F( m6502Test1, LDAAbsoluteYCanLoadAValueIntoTheARegisterWhenItCrossesAPageBoundary)
+{
+    // given:
+    cpu.Y = 0xFF;
+    mem[0xFFFC] = CPU::INS_LDA_ABSY;
+    mem[0xFFFD] = 0x02;
+    mem[0xFFFE] = 0x44; // [ 0x4402
+    mem[0x4501] = 0x37;
+    CPU CPUCopy = cpu;
+
+    // when:
+    int32_t cyclesUsed = cpu.execute(5, mem);
+
+    // then:
+    EXPECT_EQ(cpu.A, 0x37);
+    EXPECT_EQ(cyclesUsed, 5);
+    EXPECT_FALSE(cpu.Z);
+    EXPECT_FALSE(cpu.N);
+    VerifyUnmodifiedFlagsFromLDA(cpu, CPUCopy);
+}
+
+TEST_F( m6502Test1, LDAIndirectXCanLoadAValueIntoTheARegister)
+{
+    // given:
+    cpu.X = 0x04;
+    mem[0xFFFC] = CPU::INS_LDA_INDX;
+    mem[0xFFFD] = 0x02;
+    mem[0x0006] = 0x00; // 0x2 + 0x4
+    mem[0x0007] = 0x80;
+    mem[0x8000] = 0x37;
+    constexpr uint32_t EXPECTED_CYCLES = 6;
+    CPU CPUCopy = cpu;
+
+    // when:
+    int32_t cyclesUsed = cpu.execute(EXPECTED_CYCLES, mem);
+
+    // then:
+    EXPECT_EQ(cpu.A, 0x37);
+    EXPECT_EQ(cyclesUsed, EXPECTED_CYCLES);
+    EXPECT_FALSE(cpu.Z);
+    EXPECT_FALSE(cpu.N);
+    VerifyUnmodifiedFlagsFromLDA(cpu, CPUCopy);
+}
+
+TEST_F( m6502Test1, LDAIndirectYCanLoadAValueIntoTheARegister)
+{
+    // given:
+    cpu.Y = 4;
+    mem[0xFFFC] = CPU::INS_LDA_INDY;
+    mem[0xFFFD] = 0x02;
+    mem[0x0002] = 0x00; 
+    mem[0x0003] = 0x80; 
+    mem[0x8004] = 0x37; // 0x8000 + 0x4
+    constexpr uint32_t EXPECTED_CYCLES = 5;
+    CPU CPUCopy = cpu;
+
+    // when:
+    int32_t cyclesUsed = cpu.execute(EXPECTED_CYCLES, mem);
+
+    // then:
+    EXPECT_EQ(cpu.A, 0x37);
+    EXPECT_EQ(cyclesUsed, EXPECTED_CYCLES);
+    EXPECT_FALSE(cpu.Z);
+    EXPECT_FALSE(cpu.N);
+    VerifyUnmodifiedFlagsFromLDA(cpu, CPUCopy);
+}
+
+TEST_F( m6502Test1, LDAIndirectYCanLoadAValueIntoTheARegisterWhenItCrossesAPageBoundary)
+{
+    // given:
+    cpu.Y = 0xFF;
+    mem[0xFFFC] = CPU::INS_LDA_INDY;
+    mem[0xFFFD] = 0x02;
+    mem[0x0002] = 0x02; 
+    mem[0x0003] = 0x80; 
+    mem[0x8101] = 0x37; // 0x8002 + 0xFF
+    constexpr uint32_t EXPECTED_CYCLES = 6;
+    CPU CPUCopy = cpu;
+
+    // when:
+    int32_t cyclesUsed = cpu.execute(EXPECTED_CYCLES, mem);
+
+    // then:
+    EXPECT_EQ(cpu.A, 0x37);
+    EXPECT_EQ(cyclesUsed, EXPECTED_CYCLES);
+    EXPECT_FALSE(cpu.Z);
+    EXPECT_FALSE(cpu.N);
+    VerifyUnmodifiedFlagsFromLDA(cpu, CPUCopy);
 }

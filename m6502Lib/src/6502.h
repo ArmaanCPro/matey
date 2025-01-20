@@ -3,10 +3,11 @@
 #include <array>
 #include <iostream>
 #include <cstdint>
-#include <cstdlib>
 #include <memory>
 
 // modeling after the 6502 (see http://www.6502.org/users/obelisk/)
+// uint8_t = byte
+// uint16_t = word
 
 // 64 KB of memory
 struct Mem
@@ -20,21 +21,21 @@ struct Mem
     }
 
     // read one byte
-    uint8_t operator[](size_t address) const
+    inline uint8_t operator[](size_t address) const
     {
         // we should assert if the address is valid or use mem.at(address)
         return mem[address];
     }
 
     // write 1 byte
-    uint8_t& operator[](size_t address)
+    inline uint8_t& operator[](size_t address)
     {
         // we should assert if the address is valid or use mem.at(address)
         return mem[address];
     }
 
     // write 1 word to the stack. takes 2 cycles (1 for each byte)
-    void write_word(uint16_t value, uint32_t address, uint32_t& cycles)
+    inline void write_word(uint16_t value, uint32_t address, int32_t& cycles)
     {
         // least significant byte goes in first because little endian
         mem[address] = (value & 0xFF);
@@ -44,13 +45,15 @@ struct Mem
 
 };
 
-// 6502 microprocessor. 8 bit cpu, 16 bit memory bus, little endian
-struct CPU {
+// 6502 microprocessor. 8-bit cpu, 16-bit memory bus, little endian
+struct CPU
+{
     // the program counter
     uint16_t PC;
     // stack pointer
+    //uint16_t SP; // should be uint8_t, but that creates some truncation issues. will fix later
     uint8_t SP;
-
+    
     // registers
     uint8_t A;
     uint8_t X;
@@ -65,12 +68,22 @@ struct CPU {
     uint8_t V : 1;
     uint8_t N : 1;
 
+    inline uint16_t get_stack_address(uint8_t stackPointer)
+    {
+        return 0x0100 | stackPointer; // Stacks are always within page 0x01
+    }
+
+    inline uint8_t wrap_stack_address(uint8_t stackPointer)
+    {
+        return stackPointer & 0xFF; // enforce 8 bit stack pointer wrapping
+    }
+
     void reset(Mem& mem)
     {
         // reset the program counter
         PC = 0xFFFC;
         // reset the stack pointer. stack pointer starts at 0x01FF and grows downward to 0x0100
-        SP = 0x01FF;
+        SP = 0xFF;
         // reset the registers
         A = X = Y = 0;
         // reset the flags
@@ -80,19 +93,17 @@ struct CPU {
     }
 
     // fetches the byte of the PC. takes a cycle and increments program counter
-    uint8_t fetch_byte(uint32_t& cycles, const Mem& memory)
+    inline uint8_t fetch_byte(int32_t& cycles, const Mem& memory)
     {
-        uint8_t data = memory[PC];
-        PC++;
         cycles--;
-        return data;
+        return memory[PC++];
     }
 
-    // fetches the WORD (16 bit) of the PC. takes a cycle and increments program counter
-    uint16_t fetch_word(uint32_t& cycles, const Mem& memory)
+    // fetches the WORD (16 bit) of the PC. takes 2 cycles and increments program counter by 2
+    inline uint16_t fetch_word(int32_t& cycles, const Mem& memory)
     {
         // 6502 is little endian, lower byte comes first
-        uint16_t data = memory[PC] | (memory[PC + 1] << 8);
+        uint16_t data = memory[PC] | (uint16_t)(memory[PC + 1] << 8u); // bitshift promotes memory[PC + 1] to an unsigned int so we cast it back
         PC += 2;
         cycles -= 2;
         // if I wanted to handle endianness, I would have to swap bytes here
@@ -101,10 +112,16 @@ struct CPU {
     }
 
     // peeks a byte at an address. takes a cycle but does not increment program counter
-    uint8_t peek_byte(uint8_t address, uint32_t& cycles, const Mem& memory)
+    inline uint8_t peek_byte(uint16_t address, int32_t& cycles, const Mem& memory)
     {
         cycles--;
         return memory[address];
+    }
+    // peeks a word at an address. takes 2 cycles but does not change program counter
+    inline uint16_t peek_word(uint16_t address, int32_t& cycles, const Mem& memory)
+    {
+        cycles -= 2;
+        return memory[address] | (uint16_t)(memory[address + 1] << 8u); // could also do peek_byte(address) | (peek_byte(address + 1) << 8) and not change the cycles here
     }
 
 
@@ -113,19 +130,36 @@ struct CPU {
         INS_LDA_IM      = 0x00A9,   // LDA immediate
         INS_LDA_ZP      = 0x00A5,   // LDA Zero Page
         INS_LDA_ZPX     = 0x00B5,   // LDA Zero Page, X
+        INS_LDA_ABS     = 0x00AD,   // LDA Absolute
+        INS_LDA_ABSX    = 0x00BD,   // LDA Absolute, X
+        INS_LDA_ABSY    = 0x00B9,   // LDA Absolute, Y
+        INS_LDA_INDX    = 0x00A1,   // LDA Indirect, X
+        INS_LDA_INDY    = 0x00B1,   // LDA Indirect, X
         INS_JSR         = 0x0020    // JSR Absolute
-        ;
+    ;
 
-    void LDASetStatus()
+    // previously LDASetStatus(), but we can specify a register we want to pass in for this one.
+    inline void zn_set_status(uint8_t value)
     {
-        Z = (A == 0);
-        N = (A & 0x80) != 0; // checks if the most significant digit of A is 1, for the 6502 it is checking for the 7th bit
+        Z = (value == 0);
+        N = (value & 0x80) != 0;    // checks if the most significant digit of A is 1, for the 6502 it is checking for the 7th bit
     }
 
-    /** @return the number of cycles it took*/
-    int32_t execute(uint32_t cycles, Mem& memory)
+    /** order doesn't actually matter. this basically extracts the high byte and checks for equivalence. the high byte represents the page #, i.e. 4401 vs 4501 are on different pages. */
+    inline bool crosses_page_boundary(uint16_t newAddr, uint16_t baseAddr)
     {
-        const uint32_t cyclesRequested = cycles;
+        return (newAddr & 0xFF00) != (baseAddr & 0xFF00);   // see also: if (effectiveAddr - baseAddr >= 0xFF)
+    }
+    
+    inline uint8_t wrap_zero_page(uint16_t address)
+    {
+        return address & 0x00FF; // Enforces zero-page boundaries
+    }
+    /** @return the number of cycles it took*/
+    int32_t execute(int32_t cycles, Mem& memory)
+    {
+        
+        const int32_t cyclesRequested = cycles;
         while (cycles > 0)
         {
             uint8_t opCode = fetch_byte(cycles, memory); // read opcode
@@ -134,41 +168,96 @@ struct CPU {
             case INS_LDA_IM:
             {
                 A = fetch_byte(cycles, memory);
-                LDASetStatus();
+                zn_set_status(A);
             } break;
             case INS_LDA_ZP:
             {
                 uint8_t ZeroPageAddress = fetch_byte(cycles, memory);
                 A = peek_byte(ZeroPageAddress, cycles, memory);
-                LDASetStatus();
+                zn_set_status(A);
             } break;
             case INS_LDA_ZPX:
             {
                 uint8_t ZeroPageAddress = fetch_byte(cycles, memory);
-                ZeroPageAddress = (ZeroPageAddress + X) & 0xFF; // wraps around in the zero page
+                ZeroPageAddress = wrap_zero_page(ZeroPageAddress + X);
                 cycles--; // adding X to the ZeroPageAddress takes a cycle
                 A = peek_byte(ZeroPageAddress, cycles, memory);
-                LDASetStatus();
+                zn_set_status(A);
+            } break;
+            case INS_LDA_ABS:
+            {
+                uint16_t addr = fetch_word(cycles, memory);
+                A = peek_byte(addr, cycles, memory);
+                zn_set_status(A);
+            } break;
+            case INS_LDA_ABSX:
+            {
+                uint16_t baseAddr = fetch_word(cycles, memory);
+                uint16_t effectiveAddr = baseAddr + X;
+                if (crosses_page_boundary(effectiveAddr, baseAddr))
+                {
+                    cycles--;
+                }
+                A = peek_byte(effectiveAddr, cycles, memory);
+                zn_set_status(A);
+            } break;
+            case INS_LDA_ABSY:
+            {
+                uint16_t baseAddr = fetch_word(cycles, memory);
+                uint16_t effectiveAddr = baseAddr + Y;
+                if (crosses_page_boundary(effectiveAddr, baseAddr))
+                {
+                    cycles--;
+                }
+                A = peek_byte(effectiveAddr, cycles, memory);
+                zn_set_status(A);
+            } break;
+            case INS_LDA_INDX:
+            {
+                uint8_t zpAddr = fetch_byte(cycles, memory);
+                zpAddr = wrap_zero_page(zpAddr + X);
+                cycles--; // adding x to zpAddr takes a cycle
+                uint16_t effectiveAddr = peek_word(zpAddr, cycles, memory);
+                A = peek_byte(effectiveAddr, cycles, memory);
+                zn_set_status(A);
+            } break;
+            case INS_LDA_INDY:
+            {
+                uint8_t zpAddr = fetch_byte(cycles, memory);
+                uint16_t baseAddr = peek_word(zpAddr, cycles, memory);
+                uint16_t effectiveAddr = baseAddr + Y;
+                if (crosses_page_boundary(effectiveAddr, baseAddr))
+                {
+                    cycles--;
+                }
+                A = peek_byte(effectiveAddr, cycles, memory);
+                zn_set_status(A);
             } break;
             case INS_JSR:
             {
                 uint16_t SubAddr = fetch_word(cycles, memory);
                 // push return point - 1 on to the stack
                 memory.write_word(PC - 1, SP, cycles); // push return address on to the stack
-                SP--;
+                SP = wrap_stack_address(SP - 1); // We decrement SP by 1 but also need to enforce 8-bit stack pointer wrapping
                 cycles--;
                 PC = SubAddr;
                 cycles--;
             } break;
 
-            default:
+            case 0xEA: // NOP opcode
             {
-                std::cerr << "Unknown opcode: " << "0x" << std::hex << (int)opCode << std::endl;
+                cycles--; // It takes exactly 2 cycles
             } break;
 
+            default:
+            {
+                std::cerr << "[ERROR] Unknown opcode: 0x" << std::hex << (int)opCode << std::endl;
+                return cyclesRequested - cycles; // Stop executing gracefully
+            } break;
+                
             }
         }
-        
-        return (int32_t)cyclesRequested - (int32_t)cycles; // number of cycles used
+
+        return cyclesRequested - cycles; // number of cycles used
     }
 };
