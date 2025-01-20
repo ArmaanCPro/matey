@@ -1,7 +1,9 @@
 ﻿#include "6502.h"
 #include <gtest/gtest.h>
 
-class m6502Test1 : public ::testing::Test
+using namespace m6502;
+
+class m6502Test1 : public testing::Test
 {
 public:
     Mem mem;
@@ -12,7 +14,7 @@ public:
     }
     virtual void TearDown() override
     {
-
+        cpu.reset(mem);
     }
 };
 
