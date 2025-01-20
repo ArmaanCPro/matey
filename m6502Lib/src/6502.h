@@ -133,6 +133,7 @@ struct m6502::CPU
 
     // opcodes
     static constexpr uint8_t
+        //LDA
         INS_LDA_IM      = 0x00A9,   // LDA immediate
         INS_LDA_ZP      = 0x00A5,   // LDA Zero Page
         INS_LDA_ZPX     = 0x00B5,   // LDA Zero Page, X
@@ -141,6 +142,20 @@ struct m6502::CPU
         INS_LDA_ABSY    = 0x00B9,   // LDA Absolute, Y
         INS_LDA_INDX    = 0x00A1,   // LDA Indirect, X
         INS_LDA_INDY    = 0x00B1,   // LDA Indirect, X
+        // LDX
+        INS_LDX_IM      = 0x00A2,   // LDX Immediate
+        INS_LDX_ZP      = 0x00A6,   // LDX Zero Page
+        INS_LDX_ZPY     = 0x00B6,   // LDX Zero Page, Y
+        INS_LDX_ABS     = 0x00AE,   // LDX Absolute
+        INS_LDX_ABSY    = 0x00BE,   // LDX Absolute, Y
+    
+        // LDY
+        INS_LDY_IM      = 0x00A0,   // LDY Immediate
+        INS_LDY_ZP      = 0x00A4,   // LDX Zero Page
+        INS_LDY_ZPX     = 0x00B4,   // LDY Zero Page, X
+        INS_LDY_ABS     = 0x00AC,   // LDY Absolute
+        INS_LDY_ABSX    = 0x00BC,   // LDY Absolute, X
+    
         INS_JSR         = 0x0020    // JSR Absolute
     ;
 

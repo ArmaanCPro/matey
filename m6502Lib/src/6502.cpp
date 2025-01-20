@@ -99,7 +99,7 @@ int32_t m6502::CPU::execute(int32_t cycles, Mem& memory)
             std::cerr << "[ERROR] Unknown opcode: 0x" << std::hex << (int)opCode << std::endl;
             return cyclesRequested - cycles; // Stop executing gracefully
         } break;
-                
+
         }
     }
 
