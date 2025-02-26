@@ -63,7 +63,6 @@ public:
     CPU()
     {
         initialize_instruction_table();
-        reset();
     }
     
     // the program counter
