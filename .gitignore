@@ -1,4 +1,5 @@
 ﻿build/
+.cache/
 
 ### VisualStudioCode template
 .vscode/*

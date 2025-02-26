@@ -60,6 +60,12 @@ struct m6502::Mem
 class m6502::CPU
 {
 public:
+    CPU()
+    {
+        initialize_instruction_table();
+        reset();
+    }
+    
     // the program counter
     uint16_t PC;
     // stack pointer
@@ -92,8 +98,6 @@ public:
         C = Z = I = D = B = V = N = 0;
         // initialize the memory. note that the CPU doesn't do anything else with it
         mem.initialize();
-        
-        initialize_instruction_table();
     }
 
 
@@ -139,7 +143,7 @@ protected:
     
     inline uint16_t get_stack_address(uint8_t stackPointer)
     {
-        return 0x0100 | stackPointer; // Stacks are always within page 0x01
+        return 0x0100 | stackPointer; // Stacks are always within page 0x01, but the stackPointer variable is 8 bit so it can't actually hold 0x01FF
     }
 
     inline uint8_t wrap_stack_address(uint8_t stackPointer)
@@ -182,11 +186,11 @@ protected:
 
     #pragma region helpers
 
-    // previously LDASetStatus(), but we can specify a register we want to pass in for this one.
-    inline void zn_set_status(uint8_t value)
+    // previously LDASetStatus(), but we can specify a register we want to pass in for this one. It is supposed to be used after we load a register.
+    inline void zn_set_status(uint8_t registerIn)
     {
-        Z = (value == 0);
-        N = (value & 0x80) != 0;    // checks if the most significant digit of A is 1, for the 6502 it is checking for the 7th bit
+        Z = (registerIn == 0);
+        N = (registerIn & 0x80) != 0;    // checks if the most significant digit of A is 1, for the 6502 it is checking for the 7th bit
     }
 
     /** order doesn't actually matter. this basically extracts the high byte and checks for equivalence. the high byte represents the page #, i.e. 4401 vs 4501 are on different pages. */
@@ -201,4 +205,11 @@ protected:
     }
 
     #pragma endregion
+
+    /** Addressing mode - Zero page */
+    inline uint8_t AddrZeroPage(int32_t& cycles, Mem& memory);
+    /** Addressing mode - Zero page, X */
+    inline uint8_t AddrZeroPageX(int32_t& cycles, Mem& memory);
+    /** Addressing mode - Zero page, Y */
+    inline uint8_t AddrZeroPageY(int32_t& cycles, Mem& memory);
 };

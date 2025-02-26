@@ -24,9 +24,7 @@ void m6502::CPU::initialize_instruction_table()
         entry = NOP_lambda;
     }
 
-    // cycle accurate performance isn't a big concern of mine currently, hence I'm using shared handlers
-    // these shared handlers have a switch statement, but the few nanosecond runtime cost is a fine tradeoff for code maintenance
-    // maybe I'll change it later
+    // shared handlers may be better for maintainability. not using them for now
     
     /** LDA family */
     // ----------------------
@@ -35,12 +33,12 @@ void m6502::CPU::initialize_instruction_table()
         zn_set_status(A);
     };
     instructionTable[INS_LDA_ZP] = [&](int32_t& cycles, Mem& memory) {
-        uint8_t ZeroPageAddress = fetch_byte(cycles, memory);
+        uint8_t ZeroPageAddress = AddrZeroPage(cycles, memory);
         A = peek_byte(ZeroPageAddress, cycles, memory);
         zn_set_status(A);
     };
     instructionTable[INS_LDA_ZPX] = [&](int32_t& cycles, Mem& memory) {
-        uint8_t ZeroPageAddress = fetch_byte(cycles, memory);
+        uint8_t ZeroPageAddress = AddrZeroPage(cycles, memory);
         ZeroPageAddress = wrap_zero_page(ZeroPageAddress + X);
         cycles--; // adding X to teh ZPA takes a cycle
         A = peek_byte(ZeroPageAddress, cycles, memory);
@@ -72,9 +70,7 @@ void m6502::CPU::initialize_instruction_table()
         zn_set_status(A);
     };
     instructionTable[INS_LDA_INDX] = [&](int32_t& cycles, Mem& memory) {
-        uint8_t zpAddr = fetch_byte(cycles, memory);
-        zpAddr = wrap_zero_page(zpAddr + X);
-        cycles--; // adding x to zpAddr takes a cycle
+        uint8_t zpAddr = AddrZeroPageX(cycles, memory);
         uint16_t effectiveAddr = peek_word(zpAddr, cycles, memory);
         A = peek_byte(effectiveAddr, cycles, memory);
         zn_set_status(A);
@@ -91,12 +87,18 @@ void m6502::CPU::initialize_instruction_table()
         zn_set_status(A);
     };
     // ---------------------------------------------
-
+    
     /** LDX Family */
     // ------------------
     instructionTable[INS_LDX_IM] = [&](int32_t& cycles, Mem& memory)
     {
         X = fetch_byte(cycles, memory);
+        zn_set_status(X);
+    };
+    instructionTable[INS_LDX_ZP] = [&](int32_t& cycles, Mem& memory)
+    {
+        uint8_t ZeroPageAddress = AddrZeroPage(cycles, memory);
+        X = peek_byte(ZeroPageAddress, cycles, memory);
         zn_set_status(X);
     };
     // -------------------
@@ -108,13 +110,25 @@ void m6502::CPU::initialize_instruction_table()
         Y = fetch_byte(cycles, memory);
         zn_set_status(Y);
     };
+    instructionTable[INS_LDY_ZP] = [&](int32_t& cycles, Mem& memory)
+    {
+        uint8_t ZeroPageAddress = AddrZeroPage(cycles, memory);
+        Y = peek_byte(ZeroPageAddress, cycles, memory);
+        zn_set_status(Y);
+    };
+    instructionTable[INS_LDY_ZPX] = [&](int32_t& cycles, Mem& memory)
+    {
+        uint8_t ZeroPageAddress = AddrZeroPageX(cycles, memory);
+        Y = peek_byte(ZeroPageAddress, cycles, memory);
+        zn_set_status(Y);
+    };
     // ----------------------
     
     instructionTable[INS_JSR] = [&](int32_t& cycles, Mem& memory)
     {
         uint16_t SubAddr = fetch_word(cycles, memory);
         // push return point - 1 on to the stack
-        memory.write_word(PC - 1, SP, cycles); // push return address on to the stack
+        memory.write_word(PC - 1, get_stack_address(SP), cycles); // push return address on to the stack
         SP = wrap_stack_address(SP - 1); // We decrement SP by 1 but also need to enforce 8-bit stack pointer wrapping
         cycles--;
         PC = SubAddr;
@@ -123,4 +137,17 @@ void m6502::CPU::initialize_instruction_table()
     
     // NOP opcode
     instructionTable[0xEA] = NOP_lambda;
+}
+
+uint8_t m6502::CPU::AddrZeroPage(int32_t& cycles, Mem& memory)
+{
+    return fetch_byte(cycles, memory);
+}
+
+uint8_t m6502::CPU::AddrZeroPageX(int32_t& cycles, Mem& memory)
+{
+    uint8_t zpAddr = fetch_byte(cycles, memory);
+    zpAddr = wrap_zero_page(zpAddr + X);
+    cycles--; // adding x to zpAddr takes a cycle
+    return zpAddr;
 }
